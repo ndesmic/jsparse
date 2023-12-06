@@ -1,5 +1,5 @@
 {
 	"tasks": {
-		"test:js" : "deno test"
+		"test:parser" : "deno test --filter \"Parser\""
 	}
 }
