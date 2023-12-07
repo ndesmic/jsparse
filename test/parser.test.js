@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.207.0/assert/mod.ts";
-import { Parser, nonterminal, not, optional, nonremovable, virtual } from "../src/parser.js";
+import { Parser, nonterminal, not, optional, include, virtualNonterminal, excludeNot, excludeOptional } from "../src/parser.js";
 import { Tokenizer } from "../src/tokenizer.js";
 import { assertThrows } from "https://deno.land/std@0.207.0/assert/assert_throws.ts";
 
@@ -112,7 +112,58 @@ Deno.test("Parser can parse not tokens", () => {
 		"Foobar"
 	);
 
-	let ast = parser.parse("foo bar");
+	let ast = parser.parse("fooquxbar");
+	assertEquals(ast, {
+		type: "Foobar",
+		children: [
+			{ type: "Foo", children: [{ type: "foo", value: "foo" }] },
+			{ type: "qux", value: "qux" },
+			{ type: "Bar", children: [{ type: "bar", value: "bar" }] }
+		]
+	});
+
+	ast = parser.parse("foo\nbar");
+	assertEquals(ast, {
+		type: "Foobar",
+		children: [
+			{
+				type: "FooThenBar", children: [
+					{ type: "Foo", children: [{ type: "foo", value: "foo" }] },
+					{ type: "Bar", children: [{ type: "bar", value: "bar" }] }
+				]
+			}
+		]
+	});
+});
+
+Deno.test("Parser can parse exclude not tokens", () => {
+	const parser = new Parser(
+		new Tokenizer([
+			{ matcher: /\ /, type: null },
+			{ matcher: /\n/, type: "\n" },
+			{ matcher: /foo/, type: "foo", valueExtractor: x => x },
+			{ matcher: /bar/, type: "bar", valueExtractor: x => x },
+			{ matcher: /qux/, type: "qux", valueExtractor: x => x }
+		]),
+		{
+			Foobar: [
+				[nonterminal("Foo"), excludeNot("\n"), nonterminal("Bar")],
+				[nonterminal("FooThenBar")]
+			],
+			FooThenBar: [
+				[nonterminal("Foo"), "\n", nonterminal("Bar")],
+			],
+			Foo: [
+				["foo"]
+			],
+			Bar: [
+				["bar"]
+			]
+		},
+		"Foobar"
+	);
+
+	let ast = parser.parse("fooquxbar");
 	assertEquals(ast, {
 		type: "Foobar",
 		children: [
@@ -172,13 +223,14 @@ Deno.test("Parser can parse optional tokens", () => {
 	assertEquals(ast, {
 		type: "Foobar",
 		children: [
+			{ type: "await" },
 			{ type: "Foo", children: [{ type: "foo", value: "foo" }] },
 			{ type: "Bar", children: [{ type: "bar", value: "bar" }] }
 		]
 	});
 });
 
-Deno.test("Parser can parse nonremovable tokens", () => {
+Deno.test("Parser can parse exclude optional tokens", () => {
 	const parser = new Parser(
 		new Tokenizer([
 			{ matcher: / /, type: null },
@@ -190,7 +242,50 @@ Deno.test("Parser can parse nonremovable tokens", () => {
 		]),
 		{
 			Foobar: [
-				[nonremovable("await"), nonterminal("Foo"), nonterminal("Bar")],
+				[excludeOptional("await"), nonterminal("Foo"), nonterminal("Bar")],
+			],
+			Foo: [
+				["foo"]
+			],
+			Bar: [
+				["bar"]
+			]
+		},
+		"Foobar"
+	);
+
+	let ast = parser.parse("foo bar");
+	assertEquals(ast, {
+		type: "Foobar",
+		children: [
+			{ type: "Foo", children: [{ type: "foo", value: "foo" }] },
+			{ type: "Bar", children: [{ type: "bar", value: "bar" }] }
+		]
+	});
+
+	ast = parser.parse("await foo bar");
+	assertEquals(ast, {
+		type: "Foobar",
+		children: [
+			{ type: "Foo", children: [{ type: "foo", value: "foo" }] },
+			{ type: "Bar", children: [{ type: "bar", value: "bar" }] }
+		]
+	});
+});
+
+Deno.test("Parser can parse include tokens", () => {
+	const parser = new Parser(
+		new Tokenizer([
+			{ matcher: / /, type: null },
+			{ matcher: /\n/, type: "\n" },
+			{ matcher: /foo/, type: "foo", valueExtractor: x => x },
+			{ matcher: /bar/, type: "bar", valueExtractor: x => x },
+			{ matcher: /qux/, type: "qux", valueExtractor: x => x },
+			{ matcher: /await/, type: "await" }
+		]),
+		{
+			Foobar: [
+				[include("await"), nonterminal("Foo"), nonterminal("Bar")],
 			],
 			Foo: [
 				["foo"]
@@ -224,7 +319,7 @@ Deno.test("Parser can parse virtual tokens", () => {
 		]),
 		{
 			Foobar: [
-				[virtual("Foo"), virtual("Bar")],
+				[virtualNonterminal("Foo"), virtualNonterminal("Bar")],
 			],
 			Foo: [
 				["foo"]

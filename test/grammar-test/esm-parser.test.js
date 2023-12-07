@@ -1,6 +1,6 @@
 import { assertEquals } from "https://deno.land/std@0.207.0/assert/mod.ts";
-import { esmParser } from "../impl/esm-parser.js";
-import { javascriptTokenizer } from "../impl/javascript-tokenizer.js";
+import { esmParser } from "../../impl/esm-parser.js";
+import { javascriptTokenizer } from "../../impl/javascript-tokenizer.js";
 
 
 Deno.test("esmParser can parse NamedImport {}", () => {
@@ -252,7 +252,6 @@ Deno.test(`esmParser can parse ModuleItemList import foo from "foo";\nimport bar
 	const tokens = [...javascriptTokenizer.tokenize(`import foo from "foo";\nimport bar from "bar";`)];
 	const { type, children, failed } = esmParser.produce(tokens, `ModuleItemList`);
 	assertEquals(type, "ModuleItemList");
-	console.log(children)
 	assertEquals(children, [
 		{
 			type: "ModuleItem",
@@ -510,4 +509,106 @@ Deno.test(`esmParser can parse module import { foo as bar, baz as qux } from "./
 			]
 		}
 	);
+});
+
+Deno.test(`esmParser can parse example 1`, () => {
+	const text = `
+		import { foo, sayBar } from "./foo.js";
+
+		console.log(\`Main says: \${ foo }\`);
+		console.log(\`Main says: \${ sayBar() }\`);
+	`;
+
+	const ast = esmParser.parse(text);
+	assertEquals(ast, {
+		type: "Module",
+		children: [
+			{
+				type: "ModuleBody",
+				children: [
+					{
+						type: "ModuleItemList",
+						children: [
+							{
+								type: "ModuleItem",
+								children: [
+									{
+										type: "ImportDeclaration",
+										children: [
+											{
+												type: "ImportClause",
+												children: [
+													{
+														type: "NamedImports",
+														children: [
+															{
+																type: "ImportsList",
+																children: [
+																	{
+																		type: "ImportSpecifier",
+																		children: [
+																			{
+																				type: "ImportedBinding",
+																				children: [
+																					{
+																						type: "identifier",
+																						value: "foo"
+																					}
+																				]
+																			}
+																		]
+																	},
+																	{
+																		type: "ImportSpecifier",
+																		children: [
+																			{
+																				type: "ImportedBinding",
+																				children: [
+																					{
+																						type: "identifier",
+																						value: "sayBar"
+																					}
+																				]
+																			}
+																		]
+																	}
+																]
+															}
+														]
+													}
+												]
+											},
+											{
+												type: "FromClause",
+												children: [
+													{
+														type: "ModuleSpecifier",
+														children: [
+															{
+																type: "string-literal",
+																value: "./foo.js"
+															}
+														]
+													}
+												]
+											}
+										]
+									},
+								]
+							},
+							{
+								type: "ModuleItem",
+								children: [
+									{
+										type: "OtherList",
+										children: []
+									}
+								]
+							}
+						]
+					}
+				]
+			}
+		]
+	});
 });

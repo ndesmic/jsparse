@@ -1,5 +1,6 @@
-import { Parser, nonterminal, virtual } from "../src/parser.js";
+import { Parser, nonterminal, virtualNonterminal, excludeNonterminal, not } from "../src/parser.js";
 import { javascriptTokenizer } from "./javascript-tokenizer.js";
+import { END } from "../src/tokenizer.js";
 
 export const esmParser = new Parser(
 	javascriptTokenizer,
@@ -12,16 +13,27 @@ export const esmParser = new Parser(
 			[nonterminal("ModuleItemList")]
 		],
 		"ModuleItemList": [ //fixed for right-recursion
-			[nonterminal("ModuleItem"), virtual("ModuleItemListSuffix")],
+			[nonterminal("ModuleItem"), virtualNonterminal("ModuleItemListSuffix")],
 		],
 		"ModuleItemListSuffix": [
-			[nonterminal("ModuleItem"), virtual("ModuleItemListSuffix")],
+			[nonterminal("ModuleItem"), virtualNonterminal("ModuleItemListSuffix")],
 			[]
 		],
 		"ModuleItem": [
 			[nonterminal("ImportDeclaration")],
 			//[nonterminal("ExportDeclaration")],
 			//[nonterminal("StatementListItem")],
+			[nonterminal("OtherList")]
+		],
+		"OtherList": [
+			[excludeNonterminal("Other"), excludeNonterminal("OtherListSuffix")],
+		],
+		"OtherListSuffix": [
+			[nonterminal("Other"), virtualNonterminal("OtherListSuffix")],
+			[]
+		],
+		"Other": [
+			[not(["export", END])]
 		],
 		"ImportDeclaration": [
 			["import", nonterminal("ImportClause"), nonterminal("FromClause"), ";"],
@@ -49,10 +61,10 @@ export const esmParser = new Parser(
 			["from", nonterminal("ModuleSpecifier")]
 		],
 		"ImportsList": [ //fix for right-recursion
-			[nonterminal("ImportSpecifier"), virtual("ImportsListSuffix")],
+			[nonterminal("ImportSpecifier"), virtualNonterminal("ImportsListSuffix")],
 		],
 		"ImportsListSuffix": [
-			[",", nonterminal("ImportSpecifier"), virtual("ImportsListSuffix")],
+			[",", nonterminal("ImportSpecifier"), virtualNonterminal("ImportsListSuffix")],
 			[]
 		],
 		"ImportSpecifier": [

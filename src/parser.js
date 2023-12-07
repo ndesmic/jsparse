@@ -1,21 +1,37 @@
-export function nonterminal(type){
-	return { type: "nonterminal", matcher: type };
+export function nonterminal(type) {
+	return { type: "nonterminal", include: true, matcher: type };
 }
 
-export function not(type){
-	return { type: "not", matcher: type }
+export function virtualNonterminal(type) {
+	return { type: "nonterminal", include: "children", matcher: type };
 }
 
-export function optional(type){
-	return { type: "optional", matcher: type };
+export function excludeNonterminal(type) {
+	return { type: "nonterminal", include: false, matcher: type };
 }
 
-export function virtual(type){
-	return { type: "virtual", matcher: type };
+export function include(type) {
+	return { type: "equals", include: true, matcher: type };
 }
 
-export function nonremovable(type){
-	return { type: "nonremovable", matcher: type };
+export function exclude(type) {
+	return { type: "equals", include: false, matcher: type };
+}
+
+export function not(type) {
+	return { type: "not", include: true, matcher: type }
+}
+
+export function excludeNot(type) {
+	return { type: "not", include: false, matcher: type }
+}
+
+export function optional(type) {
+	return { type: "optional", include: true, matcher: type };
+}
+
+export function excludeOptional(type) {
+	return { type: "optional", include: false, matcher: type };
 }
 
 export class Parser {
@@ -23,44 +39,51 @@ export class Parser {
 	#productions;
 	#goalProduction;
 
-	constructor(tokenizer, productions, goalProduction){
+	constructor(tokenizer, productions, goalProduction) {
 		this.#tokenizer = tokenizer;
 		this.#productions = productions;
 		this.#goalProduction = goalProduction;
 		if (!this.#productions[goalProduction]) throw new Error(`Goal production ${goalProduction} did not exist.`);
 	}
 
-	parse(text){
+	parse(text) {
 		const tokens = [...this.#tokenizer.tokenize(text)];
 		const production = this.produce(tokens, this.#goalProduction);
-		if(production.failed){
-			console.log(production)
+		if (production.failed) {
 			throw new Error(`Syntax Error`);
 		}
-		if (production.length != tokens.length && production.length != tokens.length - 1){ //if just END is left that's probably okay, we don't need to force them to make a production that includes it.
+		if (production.length != tokens.length && production.length != tokens.length - 1) { //if just END is left that's probably okay, we don't need to force them to make a production that includes it.
 			throw new Error(`Syntax Error: not all content read.`);
 		}
-		return { 
-			type: production.type, 
-			children: production.children 
+		return {
+			type: production.type,
+			children: production.children
 		};
 	}
 
-	produce(tokens, productionType, startIndex = 0){
+
+	debug(tokens, productionType, startIndex, label) {
+		const token = tokens[startIndex];
+		const tokenInfo = token.type.toString();
+
+		console.log(`${label} ${[productionType]} index: ${startIndex}, type: "${tokenInfo}"${token.value ? `, value: ${token.value}` : ""}`);
+	}
+
+	produce(tokens, productionType, startIndex = 0) {
 		const productionRules = this.#productions[productionType];
 
-		// console.log(`Producing ${[productionType]} @index ${startIndex} (token "${typeof (tokens[startIndex].type) === "string" ? tokens[startIndex].type : "END"}")`);
+		//this.debug(tokens, productionType, startIndex, "Producing");
 
-		for(const rule of productionRules){
+		for (const rule of productionRules) {
 			const match = this.matchRule(tokens, rule, startIndex);
 
-			// console.log(`${!match.failed ? "Backtrack" : "Produced"} ${productionType} [${rule.map(x => typeof (x) === "string" ? x : x.matcher)}] @index ${startIndex} (token ${typeof (tokens[startIndex].type) === "string" ? `"${tokens[startIndex].type}" "${tokens[startIndex].value}"` : "END"})`);
+			//this.debug(tokens, productionType, startIndex, match.failed ? "Backtracked" : "Produced");
 
-			if(!match.failed){
+			if (!match.failed) {
 				return {
-					failed: false, 
-					type: productionType, 
-					children: match.matches, 
+					failed: false,
+					type: productionType,
+					children: match.matches,
 					length: match.length
 				};
 			}
@@ -69,46 +92,45 @@ export class Parser {
 		return { failed: true };
 	}
 
-	matchRule(tokens, rule, startIndex){
+	matchRule(tokens, rule, startIndex) {
 		const matches = [];
 		let offset = 0;
-		
+
 		for (const part of rule) {
 			const currentToken = tokens[startIndex + offset];
+			const isBasicPart = typeof (part) === "string" || typeof (part) === "symbol" || Array.isArray(part);
 
-			if (typeof (part) === "string" || typeof(part) === "symbol") {
-				if (currentToken.type === part) {
-					if(currentToken.value){
+			if (isBasicPart || part.type === "equals") {
+				const shouldInclude = (isBasicPart && currentToken.value)
+					|| part.include;
+
+				if (currentToken.type === part 
+					|| currentToken.type === part.matcher
+					|| Array.isArray(part) && part.includes(currentToken.type)
+					|| Array.isArray(part.matcher) && part.matcher.includes(currentToken.type)) {
+
+					if (shouldInclude) {
 						matches.push(currentToken);
 					}
 					offset++;
 				} else {
 					return { length: offset, failed: true };
 				}
-			} else if (Array.isArray(part)) {
-				if (part.includes(currentToken.type)) {
-					if(currentToken.value){
-						matches.push(currentToken);
-					}
-					offset++
-				} else {
-					return { length: offset, failed: true };
-				}
-			} else if (part.type === "nonterminal" || part.type === "virtual") {
-				if (!this.#productions[part.matcher]){
+			} else if (part.type === "nonterminal") {
+				if (!this.#productions[part.matcher]) {
 					throw new Error(`Nonterminal production ${part.matcher} did not exist.`);
 				}
 
 				const production = this.produce(
-					tokens, 
-					part.matcher, 
+					tokens,
+					part.matcher,
 					startIndex + offset
 				);
 
 				if (!production.failed) {
-					if(part.type === "virtual"){
+					if (part.include === "children") {
 						matches.push(...production.children);
-					} else {
+					} else if(part.include){
 						matches.push({ type: production.type, children: production.children });
 					}
 					offset += production.length
@@ -116,24 +138,25 @@ export class Parser {
 					return { length: offset, failed: true };
 				}
 			} else if (part.type === "not") {
-				if (currentToken.type !== part.matcher) {
-					continue;
+				if ((!Array.isArray(part.matcher) && currentToken.type !== part.matcher)
+					|| (Array.isArray(part.matcher) && !part.matcher.includes(currentToken.type))) {
+					
+
+					if(part.include){
+						matches.push(currentToken)
+					}
+					offset++;
 				} else {
 					return { length: offset, failed: true };
 				}
 			} else if (part.type === "optional") {
-				if (currentToken.type === part.matcher) {
-					if(currentToken.value){
+				if (currentToken.type === part.matcher
+					|| Array.isArray(part.matcher) && part.matcher.includes(currentToken.type)) {
+
+					if (part.include) {
 						matches.push(currentToken);
 					}
 					offset++;
-				}
-			} else if (part.type === "nonremovable") {
-				if (currentToken.type === part.matcher) {
-					matches.push(currentToken);
-					offset++;
-				} else {
-					return { length: offset, failed: true };
 				}
 			}
 		}
